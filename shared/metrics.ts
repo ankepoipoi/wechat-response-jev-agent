@@ -18,11 +18,19 @@ import type {
 const clamp = (n: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, n));
 
 /**
- * 中文提问识别。很多人打字不打问号，
- * 「要不要…」「你在吗」这类同样是把话抛回去，不能漏掉。
+ * 中文提问识别。聊天里很少有人打问号，
+ * 「要不要…」「你在吗」「我可爱不」这类都是把话抛回去，不能漏掉。
+ * 这个正则是单一来源，analyze.ts 也复用，避免两处判断不一致。
  */
-const QUESTION_RE =
-  /[？?]|吗[？?。.!！~～]*$|呢[？?。.!！~～]*$|吧[？?。.!！~～]*$|要不要|能不能|可不可以|好不好|行不行|想不想|有没有|是不是|在吗|在么/;
+export const QUESTION_RE =
+  /[？?]|吗[。.!！~～]*$|呢[。.!！~～]*$|吧[。.!！~～]*$|不[。.!！~～]*$|怎么|如何|为什么|要不要|能不能|可不可以|好不好|行不行|想不想|有没有|是不是|几点|在哪|在吗|在么/;
+
+/**
+ * 亲昵表达。很短，但绝不是敷衍 —— 这类回复维持的是温度，不是信息量，
+ * 不能按「太短」扣分，否则会把情侣间的正常互动误判成差评。
+ */
+const AFFECTION_RE =
+  /^(抱抱|抱一下|宝宝|宝贝|小宝贝|想你|想你了|亲亲|么么|爱你|贴贴|蹭蹭|乖乖|乖|老婆|老公|晚安|早安|好梦|在呢|嗯呢|mua|啵啵)[。.!！~～\s]*$/i;
 /** 敷衍式应答：短且没有信息量 */
 const BRUSH_OFF = /^(嗯|哦|好|好的|行|可以|哈哈|哈哈哈哈|😂|👍|ok|OK|okay|是的|对|是的呢)[。.！!~～\s]*$/i;
 
@@ -157,15 +165,23 @@ export function reviewReply(
   prevOther: Message | null,
   modelQuality: number,
 ): ReplyReview {
-  let score = (modelQuality / 4) * 60;
+  // Jev 的 score 是 0~3（criteria 四级），映射到 0~60 分
+  let score = (modelQuality / 3) * 60;
   const reasons: string[] = [];
   const tips: string[] = [];
 
+  const trimmed = msg.text.trim();
   const len = Array.from(msg.text).length;
   const isQuestion = QUESTION_RE.test(msg.text);
-  const isBrushOff = BRUSH_OFF.test(msg.text.trim());
+  const isAffection = AFFECTION_RE.test(trimmed);
+  // 亲昵表达虽然短，但不是在敷衍，不能按敷衍扣分
+  const isBrushOff = !isAffection && BRUSH_OFF.test(trimmed);
 
-  if (isQuestion) {
+  if (isAffection) {
+    score += 8;
+    reasons.push("亲昵表达，维持了温度");
+    tips.push("亲昵没问题，顺势补一句具体的事会更稳");
+  } else if (isQuestion) {
     score += 15;
     reasons.push("抛出新问题，把话接住了");
   } else {
@@ -179,7 +195,7 @@ export function reviewReply(
       if (ratio >= 0.5 && ratio <= 2.2) {
         score += 10;
         reasons.push("篇幅和对方相当");
-      } else if (ratio < 0.4) {
+      } else if (ratio < 0.4 && !isAffection) {
         score -= 10;
         reasons.push("比对方短不少，容易像在敷衍");
         tips.push("多说一句自己的感受或细节");
@@ -206,6 +222,9 @@ export function reviewReply(
     reasons.push("像是敷衍式应答");
     tips.push("把「嗯/哦」换成一句具体回应");
   }
+
+  // 亲昵表达本身是有效的亲密互动，不该因为"短"或"没推进"掉到 D
+  if (isAffection) score = Math.max(score, 55);
 
   return {
     id: msg.id,

@@ -18,6 +18,7 @@ import {
   type ReplyReview,
 } from "../shared/types.ts";
 import {
+  QUESTION_RE,
   combineAffinity,
   compareBaseline,
   computeStats,
@@ -74,8 +75,6 @@ const QUALITY_LEVELS = [
   "很好地推进：接住对方情绪、给出细节、抛出新话题",
 ];
 
-const QUESTION_RE =
-  /[？?]|吗[？?。.!！~～]*$|呢[？?。.!！~～]*$|吧[？?。.!！~～]*$|要不要|能不能|可不可以|好不好|行不行|想不想|有没有|是不是|在吗|在么/;
 const BRUSH_OFF = /^(嗯|哦|好|好的|行|可以|哈哈|😂|👍|ok|OK|是的|对)[。.！!~～\s]*$/i;
 
 function formatState(messages: Message[]): string {
