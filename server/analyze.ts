@@ -11,6 +11,7 @@ import {
   EMOTION_MAP,
   INTENTS,
   INTENT_MAP,
+  RELATION_DESC,
   type AnalysisResult,
   type AnalyzeRequest,
   type Message,
@@ -123,6 +124,10 @@ export async function analyzeChat(
   const truncated = all.length > maxMessages;
   const messages = truncated ? all.slice(-maxMessages) : all;
 
+  // 关系阶段要贯穿所有判断：crush 期的"秒回"和恋爱期的"秒回"含义不同，
+  // 同一句"我错了"在两个阶段的合适程度也完全不一样
+  const relationNote = req.relation ? `（背景：${RELATION_DESC[req.relation]}）` : "";
+
   const questions: Record<string, Question> = {};
   const analyzable: Message[] = [];
 
@@ -152,7 +157,7 @@ export async function analyzeChat(
     if (m.sender === "self") {
       questions[`${m.id}_q`] = {
         type: "score",
-        instructions: `这条回复「${snippet}」接住了对方上一句吗？`,
+        instructions: `这条回复「${snippet}」接住了对方上一句吗？${relationNote}`,
         criteria: QUALITY_LEVELS,
       };
     }
@@ -160,7 +165,7 @@ export async function analyzeChat(
 
   questions["warmth"] = {
     type: "score",
-    instructions: "整体来看，对方在这段对话里的投入程度是？",
+    instructions: `整体来看，对方在这段对话里的投入程度是？${relationNote}`,
     criteria: WARMTH_LEVELS,
   };
 

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseChat } from "../shared/parse.ts";
 import { mergeBaseline } from "../shared/metrics.ts";
-import type {
-  AnalysisResult,
-  Baseline,
-  Message,
-  Session,
-  SuggestResult,
+import {
+  RELATION_DESC,
+  RELATION_LABELS,
+  RELATION_ORDER,
+  type AnalysisResult,
+  type Baseline,
+  type Message,
+  type Relation,
+  type Session,
+  type SuggestResult,
 } from "../shared/types.ts";
 import { getHealth, runAnalyze, runSuggest, type ConfigStatus } from "./api.ts";
 import { ChatStream } from "./components/ChatStream.tsx";
@@ -52,6 +56,8 @@ export default function App() {
   /** 只装「新粘贴/新输入」的内容，载入记录后永远是空的 */
   const [input, setInput] = useState("");
   const [selfName, setSelfName] = useState<string | null>(null);
+  /** 关系阶段：直接影响 Jev 的判断尺度和建议的策略取向 */
+  const [relation, setRelation] = useState<Relation>("crush");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +139,7 @@ export default function App() {
     setName("");
     setInput("");
     setSelfName(null);
+    setRelation("crush");
     setResult(null);
     setError(null);
     setSuggestResult(null);
@@ -146,6 +153,7 @@ export default function App() {
     setActiveId(id);
     setInput(""); // 输入框留空，只用来接新内容
     setSelfName(s.selfName);
+    setRelation(s.relation);
     setName(s.name);
     setResult(s.result);
     setError(null);
@@ -173,6 +181,7 @@ export default function App() {
       name: trimmed,
       input,
       selfName,
+      relation,
       createdAt: now,
       updatedAt: now,
       result: null,
@@ -181,6 +190,18 @@ export default function App() {
     setActiveId(created.id);
     setInput("");
     setNotice(`已保存为「${trimmed}」。以后直接粘贴新聊天就会自动接在下面。`);
+  }
+
+  /** 切换关系阶段：立即写回当前记录，不用再点保存 */
+  function onRelationChange(next: Relation) {
+    setRelation(next);
+    if (!activeId) return;
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeId ? { ...s, relation: next, updatedAt: Date.now() } : s,
+      ),
+    );
+    setNotice(`已标为「${RELATION_LABELS[next]}」，下次分析会按这个阶段来判断。`);
   }
 
   function onRename(id: string, next: string) {
@@ -239,6 +260,7 @@ export default function App() {
       const r = await runAnalyze({
         messages: parsed.messages,
         selfName,
+        relation,
         baseline,
       });
       setResult(r);
@@ -276,7 +298,13 @@ export default function App() {
     setSuggestError(null);
     try {
       // 把分析结果一起送过去：生成时参考 Jev 的判断，生成完再由 Jev 打分
-      const s = await runSuggest({ messages, selfName, avgLength, analysis });
+      const s = await runSuggest({
+        messages,
+        selfName,
+        relation,
+        avgLength,
+        analysis,
+      });
       setSuggestResult(s);
     } catch (e) {
       setSuggestError((e as Error).message);
@@ -356,6 +384,28 @@ export default function App() {
                   : "把微信聊天记录粘贴到这里。\n\n三种格式都支持：\n  昵称 / 日期时间 / 正文   （微信多选复制，各占一行）\n  昵称 21:03              （正文换行写）\n  昵称：正文\n\n语音 / 图片 / 表情包复制出来只有占位符，在后面补一句描述，AI 才知道那是什么。"
               }
             />
+
+            <div className="row">
+              <span className="muted">你们现在的关系？</span>
+              <div className="chip-select">
+                {RELATION_ORDER.map((r) => (
+                  <button
+                    key={r}
+                    className="chip"
+                    data-active={relation === r}
+                    onClick={() => onRelationChange(r)}
+                    title={RELATION_DESC[r]}
+                  >
+                    {RELATION_LABELS[r]}
+                  </button>
+                ))}
+              </div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {relation === "crush"
+                  ? "还在试探期，建议会偏「自然地推进」"
+                  : "已在一起，建议会偏「照顾情绪、给具体安排」"}
+              </span>
+            </div>
 
             {parsed.names.length > 0 ? (
               <div className="row">

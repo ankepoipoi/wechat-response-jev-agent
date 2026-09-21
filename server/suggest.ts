@@ -10,17 +10,32 @@
  *      可以直接比。
  */
 
-import type {
-  AnalysisResult,
-  Message,
-  SuggestRequest,
-  SuggestResult,
-  Suggestion,
+import {
+  RELATION_DESC,
+  type AnalysisResult,
+  type Message,
+  type Relation,
+  type SuggestRequest,
+  type SuggestResult,
+  type Suggestion,
 } from "../shared/types.ts";
 import { reviewReply } from "../shared/metrics.ts";
 import { askJev, type JevAnswer, type Question } from "./jev.ts";
 import { QUALITY_LEVELS, qualityRubricForPrompt } from "./jev-frames.ts";
 import { LlmError, chatComplete, extractJson, type LlmConfig } from "./llm.ts";
+
+/**
+ * 关系阶段直接决定策略取向 —— 这是这个选项目存在的唯一理由。
+ * crush 阶段越界会把人吓跑，恋爱阶段还端着会显得敷衍，两边忌讳刚好相反。
+ */
+export const RELATION_STRATEGY: Record<Relation, string> = {
+  crush:
+    "两人还在 crush 阶段，关系尚未确定。策略上：自然地展示自己、制造下一次互动的机会、留一点余地。" +
+    "不要用情侣称呼，不要逼问对方的心意，也不要写「我们到底算什么」这类摊牌的话。",
+  dating:
+    "两人已经在恋爱中。策略上：照顾对方情绪、把话说透、给具体的安排。" +
+    "不必再试探或端着，别玩欲擒故纵；有矛盾时先接住情绪再讲事情。",
+};
 
 /** 写回复主要看最近的上下文，不必把整段历史都塞进去 */
 const CONTEXT_LIMIT = 40;
@@ -155,6 +170,9 @@ ${qualityRubricForPrompt()}
 必须在接住的同时**带出新的东西** —— 一个具体的细节、一个明确的安排、或一个新的问题。
 但这不意味着要把句子写长：保持对方熟悉的短句节奏，只是每一句都要有信息增量。
 
+【关系阶段】
+${req.relation ? RELATION_STRATEGY[req.relation] : "（未指定，按聊天内容自行判断合适的亲疏程度）"}
+
 【任务】
 以「${req.selfName}」的身份，写出 3 条现在发出去的回复，目标是让关系更亲近、让对方感到被在意。
 ${styleHint}
@@ -187,7 +205,13 @@ ${styleHint}
     throw new LlmError("大模型没有给出可用的回复建议", 502);
   }
 
-  const scored = await scoreSuggestions(typesafeKey, recent, suggestions, req.selfName);
+  const scored = await scoreSuggestions(
+    typesafeKey,
+    recent,
+    suggestions,
+    req.selfName,
+    req.relation,
+  );
 
   // 把 Jev 给分最高的排到最前 —— 用户要的是「最能提升好感度的那一条」
   if (scored) {
@@ -215,15 +239,20 @@ async function scoreSuggestions(
   messages: Message[],
   suggestions: Suggestion[],
   selfName: string,
+  relation: Relation | null | undefined,
 ): Promise<boolean> {
   if (!apiKey.trim()) return false;
+
+  // 评分同样要知道关系背景，否则会把"crush 阶段的过度道歉"错判成好回复。
+  // 这句话和 analyze.ts 给「我」的回复评级用的是同一套表述，两边才可比。
+  const relationNote = relation ? `（背景：${RELATION_DESC[relation]}）` : "";
 
   const questions: Record<string, Question> = {};
   suggestions.forEach((s, i) => {
     const snippet = s.text.length > 60 ? `${s.text.slice(0, 60)}…` : s.text;
     questions[`sug${i}_q`] = {
       type: "score",
-      instructions: `「${selfName}」准备这样回复：「${snippet}」——这条回复接住对方了吗？`,
+      instructions: `「${selfName}」准备这样回复：「${snippet}」——这条回复接住对方了吗？${relationNote}`,
       criteria: QUALITY_LEVELS,
     };
   });

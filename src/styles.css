@@ -603,11 +603,48 @@ code.inline {
 }
 
 .session-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-size: 13.5px;
   font-weight: 550;
-  white-space: nowrap;
+}
+
+.session-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 关系阶段：crush 用暖色，恋爱中用绿色，列表里一眼能分 */
+.relation-tag {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+
+.relation-tag[data-relation="crush"] {
+  background: rgba(244, 63, 94, 0.14);
+  color: #be123c;
+}
+
+.relation-tag[data-relation="dating"] {
+  background: rgba(16, 185, 129, 0.16);
+  color: #047857;
+}
+
+[data-theme="dark"] .relation-tag[data-relation="crush"] {
+  background: rgba(244, 63, 94, 0.22);
+  color: #fda4af;
+}
+
+[data-theme="dark"] .relation-tag[data-relation="dating"] {
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
 }
 
 .session-meta {

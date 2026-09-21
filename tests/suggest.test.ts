@@ -240,6 +240,40 @@ test("分数必须是整数（Jev 可能返回小数，累加后会出现 63.199
   assert.ok(Number.isInteger(review.score), `应为整数，实际 ${review.score}`);
 });
 
+/* ------------------------------------------------------------------ */
+/* 关系阶段                                                            */
+/* ------------------------------------------------------------------ */
+
+import { RELATION_LABELS, RELATION_DESC, RELATION_ORDER } from "../shared/types.ts";
+import { RELATION_STRATEGY } from "../server/suggest.ts";
+
+test("每个关系阶段都有标签、说明和建议策略（加了新阶段忘了配会挂在这里）", () => {
+  for (const r of RELATION_ORDER) {
+    assert.ok(RELATION_LABELS[r], `缺标签：${r}`);
+    assert.ok(RELATION_DESC[r], `缺说明：${r}`);
+    assert.ok(RELATION_STRATEGY[r], `缺建议策略：${r}`);
+  }
+});
+
+test("两个阶段的建议策略方向必须相反", () => {
+  // crush 要克制、不要越界；恋爱中要直接、不要端着
+  assert.ok(
+    RELATION_STRATEGY.crush.includes("不要用情侣称呼"),
+    "crush 阶段应明确禁止用情侣称呼",
+  );
+  assert.ok(
+    RELATION_STRATEGY.dating.includes("别玩欲擒故纵"),
+    "恋爱阶段应明确禁止欲擒故纵",
+  );
+  assert.notEqual(RELATION_STRATEGY.crush, RELATION_STRATEGY.dating);
+});
+
+test("关系阶段的说明会写进 Jev 的投入程度判断里", () => {
+  // RELATION_DESC 是给模型看的完整描述，必须比标签本身有信息量
+  assert.ok(RELATION_DESC.crush.length > RELATION_LABELS.crush.length);
+  assert.ok(RELATION_DESC.dating.includes("恋爱"));
+});
+
 test("reviewReply 现在会给出 0~100 的分数", () => {
   const probe = {
     id: "sug0",

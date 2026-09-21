@@ -58,6 +58,7 @@ test("appendToSession 返回真实新增条数且不改动原对象", () => {
     name: "测试",
     input: base,
     selfName: SELF,
+    relation: "crush",
     createdAt: 0,
     updatedAt: 0,
     result: null,

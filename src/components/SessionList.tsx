@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Session } from "../../shared/types.ts";
+import { RELATION_LABELS, type Session } from "../../shared/types.ts";
 import { parseChat } from "../../shared/parse.ts";
 import { relativeTime } from "../sessions.ts";
 
@@ -72,7 +72,16 @@ function SessionItem({
       }}
     >
       <div className="session-main">
-        <div className="session-name">{session.name}</div>
+        <div className="session-name">
+          <span
+            className="relation-tag"
+            data-relation={session.relation}
+            title={`关系阶段：${RELATION_LABELS[session.relation]}`}
+          >
+            {RELATION_LABELS[session.relation]}
+          </span>
+          <span className="session-name-text">{session.name}</span>
+        </div>
         <div className="session-meta">
           {count} 条 · {relativeTime(session.updatedAt)}
           {session.result ? " · 已分析" : ""}

@@ -61,9 +61,12 @@ const messageSchema = z.object({
   note: z.string().max(2000).optional(),
 });
 
+const relationSchema = z.enum(["crush", "dating"]);
+
 const requestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(MAX_INPUT_MESSAGES),
   selfName: z.string().max(40),
+  relation: relationSchema.nullable().optional(),
   baseline: z
     .object({
       sessions: z.number(),
@@ -192,6 +195,7 @@ app.post("/api/analyze", async (req, res) => {
 const suggestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(MAX_INPUT_MESSAGES),
   selfName: z.string().max(40),
+  relation: relationSchema.nullable().optional(),
   avgLength: z.number().nullable().optional(),
   // 上一次的分析结果，让生成时能参考 Jev 的判断。它由本服务自己产出，原样透传即可
   analysis: z.custom<AnalysisResult>().nullable().optional(),

@@ -24,6 +24,8 @@ export function loadSessions(): Session[] {
         updatedAt: s.updatedAt ?? Date.now(),
         result: s.result ?? null,
         selfName: s.selfName ?? null,
+        // 关系阶段是后加的字段，老记录没有，默认按 crush 处理
+        relation: s.relation === "dating" ? "dating" : "crush",
       }));
   } catch {
     return [];

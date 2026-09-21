@@ -197,12 +197,39 @@ export interface AnalysisResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* 关系阶段                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 这段关系处在什么阶段。
+ *
+ * 同一个行为在不同阶段含义不同 —— crush 期的"秒回"和恋爱期的"秒回"
+ * 不是一回事：前者可能是在意，后者可能只是习惯。所以判断和建议都要知道背景。
+ */
+export type Relation = "crush" | "dating";
+
+export const RELATION_LABELS: Record<Relation, string> = {
+  crush: "crush",
+  dating: "恋爱中",
+};
+
+/** 写进 Jev 的问题和生成模型的 prompt 里，用完整描述比只用标签更有效 */
+export const RELATION_DESC: Record<Relation, string> = {
+  crush: "两人还没确定关系，正处在互相试探、建立吸引力的阶段",
+  dating: "两人已经在恋爱中，需要的是维护温度、照顾彼此情绪",
+};
+
+export const RELATION_ORDER: Relation[] = ["crush", "dating"];
+
+/* ------------------------------------------------------------------ */
 /* 请求 / 响应                                                          */
 /* ------------------------------------------------------------------ */
 
 export interface AnalyzeRequest {
   messages: Message[];
   selfName: string;
+  /** 关系阶段，影响 Jev 对「投入程度」的尺度 */
+  relation?: Relation | null;
   /** 历史基线（由浏览器带上，服务端只读不存） */
   baseline?: Baseline | null;
 }
@@ -236,6 +263,8 @@ export interface Suggestion {
 export interface SuggestRequest {
   messages: Message[];
   selfName: string;
+  /** 关系阶段，直接决定建议的策略取向 */
+  relation?: Relation | null;
   /** 对方平均字数，用来对齐回复长度 */
   avgLength?: number | null;
   /**
@@ -268,6 +297,8 @@ export interface Session {
   input: string;
   /** 用户选定的「我」的昵称 */
   selfName: string | null;
+  /** 这段关系处在什么阶段 */
+  relation: Relation;
   createdAt: number;
   updatedAt: number;
   /** 上次分析结果缓存，切回来不用再花额度 */
