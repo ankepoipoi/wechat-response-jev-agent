@@ -258,7 +258,7 @@ export default function App() {
       localStorage.setItem(BASELINE_KEY, JSON.stringify(next));
 
       // 顺手生成回复建议（依赖单独配置的生成式大模型，没配就跳过）
-      void generateSuggestions(parsed.messages, r.stats.avgLength);
+      void generateSuggestions(parsed.messages, r.stats.avgLength, r);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -266,12 +266,17 @@ export default function App() {
     }
   }
 
-  async function generateSuggestions(messages: Message[], avgLength: number | null) {
+  async function generateSuggestions(
+    messages: Message[],
+    avgLength: number | null,
+    analysis: AnalysisResult | null,
+  ) {
     if (!selfName || !llmConfigured) return;
     setSuggestLoading(true);
     setSuggestError(null);
     try {
-      const s = await runSuggest({ messages, selfName, avgLength });
+      // 把分析结果一起送过去：生成时参考 Jev 的判断，生成完再由 Jev 打分
+      const s = await runSuggest({ messages, selfName, avgLength, analysis });
       setSuggestResult(s);
     } catch (e) {
       setSuggestError((e as Error).message);
@@ -470,8 +475,13 @@ export default function App() {
               loading={suggestLoading}
               error={suggestError}
               configured={llmConfigured}
+              jevConfigured={configured}
               onRefresh={() =>
-                generateSuggestions(parsed.messages, result?.stats.avgLength ?? null)
+                generateSuggestions(
+                  parsed.messages,
+                  result?.stats.avgLength ?? null,
+                  result,
+                )
               }
             />
           ) : null}

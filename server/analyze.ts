@@ -25,6 +25,7 @@ import {
   reviewReply,
 } from "../shared/metrics.ts";
 import { askJev, topTags, type Question } from "./jev.ts";
+import { QUALITY_LEVELS } from "./jev-frames.ts";
 
 /**
  * 这些描述会随每一条消息重复出现在请求里，是 token 消耗的大头。
@@ -72,13 +73,6 @@ const WARMTH_LEVELS = [
   "平稳交流：有来有回",
   "比较投入：会主动延伸话题",
   "很投入：主动分享、情绪外露",
-];
-
-const QUALITY_LEVELS = [
-  "敷衍或答非所问，把天聊死了",
-  "接住了，但没有延伸",
-  "有回应也有推进",
-  "接住情绪、给细节、抛新话题",
 ];
 
 const BRUSH_OFF = /^(嗯|哦|好|好的|行|可以|哈哈|😂|👍|ok|OK|是的|对)[。.！!~～\s]*$/i;

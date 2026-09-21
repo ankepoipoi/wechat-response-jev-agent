@@ -158,7 +158,7 @@ function gradeOf(score: number): Grade {
 
 /**
  * 给「我」的某条回复打分。
- * modelQuality 来自 Jev（0~4，这条回复接住对方了吗），其余全是统计。
+ * modelQuality 来自 Jev（0~3，四级：敷衍 → 接住 → 有推进 → 很好），其余全是统计。
  */
 export function reviewReply(
   msg: Message,
@@ -226,9 +226,13 @@ export function reviewReply(
   // 亲昵表达本身是有效的亲密互动，不该因为"短"或"没推进"掉到 D
   if (isAffection) score = Math.max(score, 55);
 
+  // 必须取整：Jev 的 score 可能是小数，累加后会算出 63.199999999999996 这种值
+  const finalScore = Math.round(clamp(score));
+
   return {
     id: msg.id,
-    grade: gradeOf(clamp(score)),
+    grade: gradeOf(finalScore),
+    score: finalScore,
     tip: tips[0] ?? "这条接得不错，保持",
     reasons: reasons,
   };

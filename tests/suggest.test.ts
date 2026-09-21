@@ -137,3 +137,134 @@ test("用户补充的媒体描述会注明是转述", () => {
   assert.ok(text.includes("这是用户转述"));
   assert.ok(text.includes("她说周末要加班"));
 });
+
+/* ------------------------------------------------------------------ */
+/* 让生成参考 Jev 的判断                                                */
+/* ------------------------------------------------------------------ */
+
+import { formatDiagnosis } from "../server/suggest.ts";
+import { QUALITY_LEVELS, qualityRubricForPrompt } from "../server/jev-frames.ts";
+import type { AnalysisResult } from "../shared/types.ts";
+
+function fakeAnalysis(): AnalysisResult {
+  return {
+    model: "jev",
+    usage: { input: 1, output: 1 },
+    latencyMs: 1,
+    affinity: {
+      value: 76,
+      confidence: 0.6,
+      sufficient: true,
+      breakdown: { modelScore: 86, behaviorScore: 61 },
+    },
+    stats: {
+      replyMinutes: 3.9,
+      avgLength: 5.8,
+      initiativeCount: 17,
+      questionRate: 0.12,
+      count: 20,
+    },
+    insights: [
+      {
+        id: "m1",
+        emotions: [{ key: "anger", label: "生气", probability: 0.64 }],
+        intents: [{ key: "complain", label: "吐槽抱怨", probability: 0.99 }],
+        dropped: false,
+      },
+    ],
+    reviews: [
+      {
+        id: "m2",
+        grade: "D",
+        score: 28,
+        tip: "结尾加个问题，对话更容易继续",
+        reasons: ["像是敷衍式应答"],
+      },
+    ],
+    baselineNote: null,
+    analyzedCount: 2,
+  };
+}
+
+test("诊断里带上互动温度与行为统计", () => {
+  const text = formatDiagnosis(fakeAnalysis(), messages);
+  assert.ok(text.includes("互动温度 76/100"));
+  assert.ok(text.includes("3.9 分钟回一次"));
+  assert.ok(text.includes("5.8 个字"));
+});
+
+test("诊断里点出对方最近的情绪与意图", () => {
+  const text = formatDiagnosis(fakeAnalysis(), messages);
+  assert.ok(text.includes("生气"), "应包含对方情绪");
+  assert.ok(text.includes("吐槽抱怨"), "应包含对方意图");
+});
+
+test("诊断里点出我自己接得不好的回复，避免重蹈覆辙", () => {
+  const text = formatDiagnosis(fakeAnalysis(), messages);
+  assert.ok(text.includes("D 级"), "应标出差的评级");
+  assert.ok(text.includes("避开"), "应提示避免重复这些问题");
+});
+
+test("没有分析结果时诊断为空，不影响生成", () => {
+  assert.equal(formatDiagnosis(null, messages), "");
+  assert.equal(formatDiagnosis(undefined, messages), "");
+});
+
+test("评分标尺完整写进 prompt（让生成方知道会被怎么评）", () => {
+  const rubric = qualityRubricForPrompt();
+  for (const level of QUALITY_LEVELS) {
+    assert.ok(rubric.includes(level), `标尺缺少「${level}」`);
+  }
+  assert.ok(rubric.includes("3 分"), "应标出满分档");
+});
+
+/* ------------------------------------------------------------------ */
+/* 评分用的是和「我自己回复」完全相同的那把尺子                          */
+/* ------------------------------------------------------------------ */
+
+import { reviewReply } from "../shared/metrics.ts";
+
+test("分数必须是整数（Jev 可能返回小数，累加后会出现 63.1999…）", () => {
+  const probe = {
+    id: "sug0",
+    sender: "self" as const,
+    // 长度刚好和对方相当，会触发 +10，容易暴露出浮点尾数
+    text: "抱抱，我一直在呢，别急",
+    time: null,
+    minute: null,
+    media: "text" as const,
+  };
+  // 1.16 是真实观察到的 Jev 返回值形状
+  const review = reviewReply(probe, messages[0], 1.16);
+  assert.equal(review.score, Math.round(review.score), `分数带小数：${review.score}`);
+  assert.ok(Number.isInteger(review.score), `应为整数，实际 ${review.score}`);
+});
+
+test("reviewReply 现在会给出 0~100 的分数", () => {
+  const probe = {
+    id: "sug0",
+    sender: "self" as const,
+    text: "抱抱，我一直在呢，别急",
+    time: null,
+    minute: null,
+    media: "text" as const,
+  };
+  const review = reviewReply(probe, messages[0], 3);
+  assert.ok(typeof review.score === "number");
+  assert.ok(review.score >= 0 && review.score <= 100, `分数越界：${review.score}`);
+  assert.ok(["S+", "S", "A", "B", "C", "D"].includes(review.grade));
+});
+
+test("Jev 给满分的建议，等级应明显好于敷衍回复", () => {
+  const good = reviewReply(
+    { id: "a", sender: "self", text: "抱抱，我一直在呢，别急", time: null, minute: null, media: "text" },
+    messages[0],
+    3,
+  );
+  const bad = reviewReply(
+    { id: "b", sender: "self", text: "嗯", time: null, minute: null, media: "text" },
+    messages[0],
+    0,
+  );
+  assert.ok(good.score > bad.score, `好回复(${good.score}) 应高于差回复(${bad.score})`);
+});

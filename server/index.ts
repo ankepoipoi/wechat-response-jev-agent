@@ -11,6 +11,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import type { AnalysisResult } from "../shared/types.ts";
 import { analyzeChat } from "./analyze.ts";
 import { JevError } from "./jev.ts";
 import { LlmError, readLlmConfig } from "./llm.ts";
@@ -192,6 +193,8 @@ const suggestSchema = z.object({
   messages: z.array(messageSchema).min(1).max(MAX_INPUT_MESSAGES),
   selfName: z.string().max(40),
   avgLength: z.number().nullable().optional(),
+  // 上一次的分析结果，让生成时能参考 Jev 的判断。它由本服务自己产出，原样透传即可
+  analysis: z.custom<AnalysisResult>().nullable().optional(),
 });
 
 app.post("/api/suggest", async (req, res) => {
@@ -211,9 +214,15 @@ app.post("/api/suggest", async (req, res) => {
   }
 
   try {
-    const result = await suggestReplies(cfg, parsed.data);
+    // 把 Key 传下去：生成完之后还要交给 Jev 按同一套标准打分
+    const result = await suggestReplies(cfg, parsed.data, typesafeKey());
+    const grades = result.suggestions
+      .map((s) => (s.review ? `${s.review.grade}(${s.review.score})` : "—"))
+      .join(" ");
     console.log(
-      `[suggest] ${result.suggestions.length} 条建议，基于最近 ${result.usedMessages} 条，tokens ${result.usage.input}/${result.usage.output}`,
+      `[suggest] ${result.suggestions.length} 条建议，基于最近 ${result.usedMessages} 条，` +
+        `评分[${grades}]${result.scored ? "" : "（Jev 评分未成功）"}，` +
+        `${result.latencyMs}ms，tokens ${result.usage.input}/${result.usage.output}`,
     );
     res.json(result);
   } catch (err) {

@@ -169,6 +169,8 @@ export type Grade = "S+" | "S" | "A" | "B" | "C" | "D";
 export interface ReplyReview {
   id: string;
   grade: Grade;
+  /** 0~100 的综合分，等级由它换算而来 */
+  score: number;
   /** 一句话建议 */
   tip: string;
   /** 该回复的扣分/加分点 */
@@ -223,6 +225,12 @@ export interface Suggestion {
   reason: string;
   /** 一句话概括策略，如「先接住情绪」 */
   tone: string;
+  /**
+   * Jev 按「这条回复接住对方了吗」四级评出的结果 ——
+   * 与给你自己回复的评级用的是**同一套标准**（shared/metrics.ts 的 reviewReply）。
+   * Jev 调用失败时为 null，此时建议仍会返回，只是没有分数。
+   */
+  review: ReplyReview | null;
 }
 
 export interface SuggestRequest {
@@ -230,6 +238,11 @@ export interface SuggestRequest {
   selfName: string;
   /** 对方平均字数，用来对齐回复长度 */
   avgLength?: number | null;
+  /**
+   * 上一次的分析结果。带上它，生成时就能参考 Jev 的判断
+   * （对方现在的情绪/意图、我哪里接得不好），写出来的回复更有针对性。
+   */
+  analysis?: AnalysisResult | null;
 }
 
 export interface SuggestResult {
@@ -238,6 +251,9 @@ export interface SuggestResult {
   usage: { input: number; output: number };
   /** 实际喂给模型的聊天条数（过长时只取最近部分） */
   usedMessages: number;
+  /** Jev 评分是否成功（失败时仍返回建议，只是没有分数） */
+  scored: boolean;
+  latencyMs: number;
 }
 
 /* ------------------------------------------------------------------ */
