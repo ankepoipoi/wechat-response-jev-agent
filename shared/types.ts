@@ -185,3 +185,21 @@ export interface Baseline {
   avgLength: number | null;
   avgInitiative: number | null;
 }
+
+/* ------------------------------------------------------------------ */
+/* 保存的聊天记录                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface Session {
+  id: string;
+  /** 用户起的名字 */
+  name: string;
+  /** 原始粘贴文本。多次粘贴会累积在这里，新内容自动接在后面 */
+  input: string;
+  /** 用户选定的「我」的昵称 */
+  selfName: string | null;
+  createdAt: number;
+  updatedAt: number;
+  /** 上次分析结果缓存，切回来不用再花额度 */
+  result: AnalysisResult | null;
+}
