@@ -32,10 +32,27 @@ export interface Message {
   note?: string;
 }
 
+export interface ParseDiagnostics {
+  /** 实际选中的解析策略 */
+  strategy: "triple" | "block" | "inline";
+  /** 识别到的消息条数 */
+  messageCount: number;
+  /** 识别到的昵称数量 */
+  nameCount: number;
+  /** 带时间戳的消息占比 0~1，回复间隔等统计依赖它 */
+  timestampRatio: number;
+  /** 没能归入任何消息的非空行数 */
+  orphanLines: number;
+  /** 给用户看的提示（为空表示一切正常） */
+  warnings: string[];
+}
+
 export interface ParsedChat {
   messages: Message[];
   /** 文本里出现过的昵称（供用户选"哪个是我"） */
   names: string[];
+  /** 解析诊断，用来把「没能识别」的原因说清楚 */
+  diagnostics: ParseDiagnostics;
 }
 
 /* ------------------------------------------------------------------ */

@@ -31,6 +31,12 @@ const SAMPLE = `对方 21:00
 const BASELINE_KEY = "echo.baseline";
 const THEME_KEY = "echo.theme";
 
+const STRATEGY_LABEL: Record<string, string> = {
+  triple: "多选复制格式",
+  block: "昵称＋时间格式",
+  inline: "速记格式",
+};
+
 export default function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -342,10 +348,22 @@ export default function App() {
 
               <div className="spacer" />
               <span className="muted">
-                共 {parsed.messages.length} 条
-                {activeSession ? ` · 已保存` : ""}
+                共 {parsed.messages.length} 条 · 识别为
+                {STRATEGY_LABEL[parsed.diagnostics.strategy] ?? "未知格式"}
+                {parsed.diagnostics.timestampRatio > 0 &&
+                parsed.diagnostics.timestampRatio < 1
+                  ? ` · ${Math.round(parsed.diagnostics.timestampRatio * 100)}% 带时间`
+                  : ""}
+                {activeSession ? " · 已保存" : ""}
               </span>
             </div>
+
+            {parsed.diagnostics.warnings.length > 0 ? (
+              <div className="banner banner-warn">
+                <span>🔎</span>
+                <span>{parsed.diagnostics.warnings.join(" ")}</span>
+              </div>
+            ) : null}
 
             {!selfName && parsed.messages.length > 0 ? (
               <div className="banner banner-info">

@@ -262,6 +262,18 @@ textarea:focus {
   color: var(--muted);
 }
 
+.banner-warn {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+[data-theme="dark"] .banner-warn {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
 /* ------------------------------ 概览 ------------------------------ */
 
 .overview {
