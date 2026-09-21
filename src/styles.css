@@ -692,3 +692,49 @@ code.inline {
   font-weight: 650;
   letter-spacing: 0.2px;
 }
+
+/* ------------------------------ 最能拉近距离的回复 ------------------------------ */
+
+.section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+}
+
+.suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suggest-item {
+  background: var(--card-solid);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.suggest-item:hover {
+  border-color: rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
+}
+
+.suggest-text {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.7;
+  font-weight: 500;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.suggest-reason {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}

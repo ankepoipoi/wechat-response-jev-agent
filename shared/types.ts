@@ -213,6 +213,34 @@ export interface Baseline {
 }
 
 /* ------------------------------------------------------------------ */
+/* 最佳回复建议（需要额外的生成式大模型）                                 */
+/* ------------------------------------------------------------------ */
+
+export interface Suggestion {
+  /** 可直接发出的回复内容 */
+  text: string;
+  /** 为什么这条能拉近距离 */
+  reason: string;
+  /** 一句话概括策略，如「先接住情绪」 */
+  tone: string;
+}
+
+export interface SuggestRequest {
+  messages: Message[];
+  selfName: string;
+  /** 对方平均字数，用来对齐回复长度 */
+  avgLength?: number | null;
+}
+
+export interface SuggestResult {
+  suggestions: Suggestion[];
+  model: string;
+  usage: { input: number; output: number };
+  /** 实际喂给模型的聊天条数（过长时只取最近部分） */
+  usedMessages: number;
+}
+
+/* ------------------------------------------------------------------ */
 /* 保存的聊天记录                                                       */
 /* ------------------------------------------------------------------ */
 

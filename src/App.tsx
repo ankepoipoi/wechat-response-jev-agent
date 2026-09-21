@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseChat } from "../shared/parse.ts";
 import { mergeBaseline } from "../shared/metrics.ts";
-import type { AnalysisResult, Baseline, Session } from "../shared/types.ts";
-import { getHealth, runAnalyze } from "./api.ts";
+import type {
+  AnalysisResult,
+  Baseline,
+  Message,
+  Session,
+  SuggestResult,
+} from "../shared/types.ts";
+import { getHealth, runAnalyze, runSuggest } from "./api.ts";
 import { ChatStream } from "./components/ChatStream.tsx";
 import { Overview } from "./components/Overview.tsx";
 import { SessionList } from "./components/SessionList.tsx";
+import { Suggestions } from "./components/Suggestions.tsx";
 import {
   appendToSession,
   loadSessions,
@@ -52,6 +59,12 @@ export default function App() {
   const [configured, setConfigured] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
+  // 「最佳回复」需要另一个生成式大模型
+  const [suggestResult, setSuggestResult] = useState<SuggestResult | null>(null);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [llmConfigured, setLlmConfigured] = useState(false);
+
   const hydrated = useRef(false);
 
   useEffect(() => {
@@ -71,7 +84,10 @@ export default function App() {
     hydrated.current = true;
 
     getHealth()
-      .then((h) => setConfigured(h.configured))
+      .then((h) => {
+        setConfigured(h.configured);
+        setLlmConfigured(h.llmConfigured);
+      })
       .catch(() => setConfigured(false));
   }, []);
 
@@ -112,6 +128,8 @@ export default function App() {
     setSelfName(null);
     setResult(null);
     setError(null);
+    setSuggestResult(null);
+    setSuggestError(null);
     setNotice("已开始一段新记录，粘贴聊天后给它起个名字保存。");
   }
 
@@ -124,6 +142,8 @@ export default function App() {
     setName(s.name);
     setResult(s.result);
     setError(null);
+    setSuggestResult(null);
+    setSuggestError(null);
     setNotice(`已载入「${s.name}」。直接粘贴新聊天，会自动接到下面。`);
   }
 
@@ -229,10 +249,28 @@ export default function App() {
       const next = mergeBaseline(baseline, r.stats);
       setBaseline(next);
       localStorage.setItem(BASELINE_KEY, JSON.stringify(next));
+
+      // 顺手生成回复建议（依赖单独配置的生成式大模型，没配就跳过）
+      void generateSuggestions(parsed.messages, r.stats.avgLength);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function generateSuggestions(messages: Message[], avgLength: number | null) {
+    if (!selfName || !llmConfigured) return;
+    setSuggestLoading(true);
+    setSuggestError(null);
+    try {
+      const s = await runSuggest({ messages, selfName, avgLength });
+      setSuggestResult(s);
+    } catch (e) {
+      setSuggestError((e as Error).message);
+      setSuggestResult(null);
+    } finally {
+      setSuggestLoading(false);
     }
   }
 
@@ -414,6 +452,18 @@ export default function App() {
                 reviews={result?.reviews ?? []}
               />
             </section>
+          ) : null}
+
+          {parsed.messages.length > 0 ? (
+            <Suggestions
+              result={suggestResult}
+              loading={suggestLoading}
+              error={suggestError}
+              configured={llmConfigured}
+              onRefresh={() =>
+                generateSuggestions(parsed.messages, result?.stats.avgLength ?? null)
+              }
+            />
           ) : null}
 
           <p className="muted" style={{ textAlign: "center", marginTop: 8 }}>

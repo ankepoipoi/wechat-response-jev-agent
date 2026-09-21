@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { analyzeChat } from "./analyze.ts";
 import { JevError } from "./jev.ts";
+import { LlmError, readLlmConfig } from "./llm.ts";
+import { suggestReplies } from "./suggest.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(__dirname, "../dist");
@@ -87,10 +89,14 @@ function withinLimit(): boolean {
 /* ------------------------------------------------------------------ */
 
 app.get("/api/health", (_req, res) => {
+  const llm = readLlmConfig();
   res.json({
     ok: true,
     configured: Boolean(API_KEY),
     maxMessages: MAX_MESSAGES,
+    /** 是否配置了生成式大模型（「最佳回复」功能需要） */
+    llmConfigured: Boolean(llm),
+    llmModel: llm?.model ?? null,
   });
 });
 
@@ -125,6 +131,53 @@ app.post("/api/analyze", async (req, res) => {
     }
     console.error("[analyze] 未预期错误：", err);
     res.status(500).json({ error: "分析没能完成，聊天内容已保留，可以重试" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* 最佳回复建议：交给生成式大模型（Jev 不生成文本）                       */
+/* ------------------------------------------------------------------ */
+
+const suggestSchema = z.object({
+  messages: z.array(messageSchema).min(1).max(MAX_INPUT_MESSAGES),
+  selfName: z.string().max(40),
+  avgLength: z.number().nullable().optional(),
+});
+
+app.post("/api/suggest", async (req, res) => {
+  const parsed = suggestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "聊天结构不符合要求，无法生成建议" });
+    return;
+  }
+
+  const cfg = readLlmConfig();
+  if (!cfg) {
+    res.status(503).json({
+      error:
+        "还没配置生成式大模型。请在项目根目录 .env 里填 LLM_API_KEY（以及 LLM_BASE_URL、LLM_MODEL），然后重启服务。",
+    });
+    return;
+  }
+
+  try {
+    const result = await suggestReplies(cfg, parsed.data);
+    console.log(
+      `[suggest] ${result.suggestions.length} 条建议，基于最近 ${result.usedMessages} 条，tokens ${result.usage.input}/${result.usage.output}`,
+    );
+    res.json(result);
+  } catch (err) {
+    if (err instanceof LlmError) {
+      console.error(`[suggest] llm ${err.status}`);
+      res
+        .status(err.status >= 400 && err.status < 600 ? err.status : 502)
+        .json({ error: err.message });
+      return;
+    }
+    console.error("[suggest] 未预期错误：", err);
+    res.status(500).json({ error: "生成建议没能完成，可以重试" });
   }
 });
 
