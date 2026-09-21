@@ -43,6 +43,8 @@ export interface ParseDiagnostics {
   timestampRatio: number;
   /** 没能归入任何消息的非空行数 */
   orphanLines: number;
+  /** 原文是倒序（最新的在最上面），已自动按时间顺序整理 */
+  reversed: boolean;
   /** 给用户看的提示（为空表示一切正常） */
   warnings: string[];
 }
@@ -183,6 +185,13 @@ export interface AnalysisResult {
   reviews: ReplyReview[];
   /** 与历史基线对比后的提示，样本不足时为空 */
   baselineNote: string | null;
+  /**
+   * 对话过长时只分析了最近一部分；这里是原始条数。
+   * 没截断时不存在。
+   */
+  truncatedFrom?: number;
+  /** 本次实际参与分析的消息条数 */
+  analyzedCount: number;
 }
 
 /* ------------------------------------------------------------------ */

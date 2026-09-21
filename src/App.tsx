@@ -354,6 +354,7 @@ export default function App() {
                 parsed.diagnostics.timestampRatio < 1
                   ? ` · ${Math.round(parsed.diagnostics.timestampRatio * 100)}% 带时间`
                   : ""}
+                {parsed.diagnostics.reversed ? " · 已按时间顺序整理" : ""}
                 {activeSession ? " · 已保存" : ""}
               </span>
             </div>

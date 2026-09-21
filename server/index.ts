@@ -19,7 +19,13 @@ const DIST = path.resolve(__dirname, "../dist");
 
 const PORT = Number(process.env.PORT ?? 3199);
 const HOST = process.env.HOST ?? "127.0.0.1";
-const MAX_MESSAGES = Number(process.env.MAX_MESSAGES ?? 60);
+/**
+ * 单次分析的最大条数。超出的长对话会取最近这么多条，
+ * 而不是直接拒绝 —— 逐句分析的消息描述会重复进请求，太多会顶爆上下文。
+ */
+const MAX_MESSAGES = Number(process.env.MAX_MESSAGES ?? 120);
+/** 请求体允许携带的上限，超过分析上限时由 analyze 内部截取 */
+const MAX_INPUT_MESSAGES = 2000;
 const API_KEY = process.env.TYPESAFE_API_KEY ?? "";
 
 const app = express();
@@ -48,7 +54,7 @@ const messageSchema = z.object({
 });
 
 const requestSchema = z.object({
-  messages: z.array(messageSchema).min(1).max(MAX_MESSAGES),
+  messages: z.array(messageSchema).min(1).max(MAX_INPUT_MESSAGES),
   selfName: z.string().max(40),
   baseline: z
     .object({
@@ -104,9 +110,9 @@ app.post("/api/analyze", async (req, res) => {
   }
 
   try {
-    const result = await analyzeChat(parsed.data, API_KEY);
+    const result = await analyzeChat(parsed.data, API_KEY, MAX_MESSAGES);
     console.log(
-      `[analyze] 消息 ${parsed.data.messages.length} 条，${result.latencyMs}ms，tokens ${result.usage.input}/${result.usage.output}`,
+      `[analyze] 消息 ${parsed.data.messages.length} 条${result.truncatedFrom ? `（截取最近 ${result.analyzedCount} 条）` : ""}，${result.latencyMs}ms，tokens ${result.usage.input}/${result.usage.output}`,
     );
     res.json(result);
   } catch (err) {

@@ -57,7 +57,16 @@ const fmt = (n: number | null, digits = 1) =>
   n === null ? "—" : n.toFixed(digits);
 
 export function Overview({ result }: { result: AnalysisResult }) {
-  const { affinity, stats, baselineNote, usage, latencyMs, model } = result;
+  const {
+    affinity,
+    stats,
+    baselineNote,
+    usage,
+    latencyMs,
+    model,
+    truncatedFrom,
+    analyzedCount,
+  } = result;
 
   return (
     <div className="card stack">
@@ -107,6 +116,13 @@ export function Overview({ result }: { result: AnalysisResult }) {
           sub="以问句结尾的比例"
         />
       </div>
+
+      {truncatedFrom ? (
+        <div className="hint">
+          对话共 {truncatedFrom} 条，为控制单次请求规模，本次分析了最近的{" "}
+          {analyzedCount} 条（统计与评级均基于这部分）。
+        </div>
+      ) : null}
 
       <div className="muted">
         {model} · {latencyMs}ms · tokens {usage.input}/{usage.output}

@@ -26,53 +26,59 @@ import {
 } from "../shared/metrics.ts";
 import { askJev, topTags, type Question } from "./jev.ts";
 
+/**
+ * 这些描述会随每一条消息重复出现在请求里，是 token 消耗的大头。
+ * 所以刻意写短 —— 保留区分度所需的关键词就够了，长篇描述会把
+ * 长对话顶出模型上下文。
+ */
+
 const EMOTION_HINT: Record<string, string> = {
-  joy: "语气轻快、有笑意、表达高兴或满足",
-  anticipation: "期待某事、盼望见面或继续聊",
-  trust: "放松、安心、愿意托付或倾诉",
-  flirt: "暧昧、试探、带有好感的暗示",
-  gratitude: "表达感谢、领情",
+  joy: "高兴、有笑意",
+  anticipation: "期待、想继续",
+  trust: "放松、安心",
+  flirt: "暧昧、暗示好感",
+  gratitude: "道谢、领情",
   surprise: "意外、没料到",
-  neutral: "平静陈述，没有明显情绪",
-  curiosity: "好奇、想追问、想了解更多",
-  fatigue: "累、困、提不起劲",
-  sadness: "低落、失落、委屈",
-  anxiety: "担心、不安、患得患失",
-  annoyance: "不耐烦、嫌烦、语气发硬",
-  anger: "生气、指责、明显不满",
-  distance: "冷淡、保持距离、刻意疏远",
+  neutral: "平静陈述",
+  curiosity: "好奇、想追问",
+  fatigue: "累、困",
+  sadness: "低落、委屈",
+  anxiety: "担心、不安",
+  annoyance: "不耐烦",
+  anger: "生气、指责",
+  distance: "冷淡、疏远",
 };
 
 const INTENT_HINT: Record<string, string> = {
-  share: "分享自己的日常、见闻、状态",
-  ask: "提出问题或请求帮助",
-  invite: "提出见面、邀约、一起做某事",
-  praise: "夸奖、认可、表示欣赏",
-  comfort: "安慰、关心对方",
-  tease: "开玩笑、调侃、逗对方",
-  flirt: "暧昧试探、释放好感信号",
-  explain: "解释原因、说明情况",
-  complain: "吐槽、抱怨某事或某人",
-  refuse: "拒绝、推脱、婉拒",
-  apologize: "道歉、表示歉意",
+  share: "分享日常见闻",
+  ask: "提问或求助",
+  invite: "邀约、提议一起",
+  praise: "夸奖认可",
+  comfort: "安慰关心",
+  tease: "开玩笑调侃",
+  flirt: "暧昧试探",
+  explain: "解释说明",
+  complain: "吐槽抱怨",
+  refuse: "拒绝推脱",
+  apologize: "道歉",
   thanks: "道谢",
-  end: "结束话题、示意要停了",
-  other: "不属于以上任何一类",
+  end: "收尾结束",
+  other: "以上都不是",
 };
 
 const WARMTH_LEVELS = [
-  "明显在拉开距离：敷衍、不接话、只回最少字",
-  "客气但有距离：礼貌回应，不主动延伸话题",
-  "平稳交流：有来有回，话题能接住",
-  "比较投入：会主动延伸话题、追问细节",
-  "很投入：主动分享、主动找话题、情绪外露",
+  "明显拉开距离：敷衍、不接话",
+  "客气但有距离：礼貌、不延伸",
+  "平稳交流：有来有回",
+  "比较投入：会主动延伸话题",
+  "很投入：主动分享、情绪外露",
 ];
 
 const QUALITY_LEVELS = [
-  "把天聊死了：敷衍、答非所问或冷场",
-  "接住了但没延伸：回应正确，话题到此为止",
-  "接住并有来有回：有回应也有推进",
-  "很好地推进：接住对方情绪、给出细节、抛出新话题",
+  "敷衍或答非所问，把天聊死了",
+  "接住了，但没有延伸",
+  "有回应也有推进",
+  "接住情绪、给细节、抛新话题",
 ];
 
 const BRUSH_OFF = /^(嗯|哦|好|好的|行|可以|哈哈|😂|👍|ok|OK|是的|对)[。.！!~～\s]*$/i;
@@ -110,9 +116,18 @@ function isDropped(messages: Message[], index: number): boolean {
 export async function analyzeChat(
   req: AnalyzeRequest,
   apiKey: string,
+  maxMessages = 120,
 ): Promise<AnalysisResult> {
   const started = Date.now();
-  const messages = req.messages;
+
+  /**
+   * 逐句判断会把「情绪 + 意图」的描述按消息条数重复进请求，条数一多就会
+   * 顶爆模型上下文。所以超长对话只分析最近的 maxMessages 条 ——
+   * 近期对话对当下关系状态的判断更有意义，也保证请求不会失败。
+   */
+  const all = req.messages;
+  const truncated = all.length > maxMessages;
+  const messages = truncated ? all.slice(-maxMessages) : all;
 
   const questions: Record<string, Question> = {};
   const analyzable: Message[] = [];
@@ -196,5 +211,7 @@ export async function analyzeChat(
     stats,
     reviews,
     baselineNote: compareBaseline(stats, req.baseline ?? null),
+    analyzedCount: messages.length,
+    ...(truncated ? { truncatedFrom: all.length } : {}),
   };
 }

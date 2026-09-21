@@ -171,6 +171,31 @@ interface RawMessage {
   minuteOfDay: number | null;
 }
 
+/**
+ * 剥掉整段文本共有的前缀。
+ *
+ * 从别处复制聊天记录时，常会带上 markdown 引用符（每行 "> "）
+ * 或统一缩进，这会让时间行认不出来、昵称变成 ">"。
+ * 只在「大多数非空行都有同样前缀」时才剥离，避免误伤正常内容。
+ */
+function stripCommonPrefix(lines: string[]): string[] {
+  const nonEmpty = lines.filter((l) => l.trim());
+  if (nonEmpty.length < 3) return lines;
+
+  const quoted = nonEmpty.filter((l) => /^>\s?/.test(l)).length;
+  if (quoted / nonEmpty.length >= 0.6) {
+    return lines.map((l) => l.replace(/^>\s?/, ""));
+  }
+
+  const indents = nonEmpty.map((l) => l.match(/^\s*/)?.[0].length ?? 0);
+  const minIndent = Math.min(...indents);
+  if (minIndent > 0) {
+    return lines.map((l) => l.slice(minIndent));
+  }
+
+  return lines;
+}
+
 type Strategy = ParseDiagnostics["strategy"];
 
 /** 昵称行候选：往前跳过空行，但不越过上一条的正文太远 */
@@ -290,12 +315,42 @@ function scoreMessages(messages: RawMessage[]): number {
   return valid.length * (0.4 + timeRatio * 0.6) + (withTime > 0 ? 3 : 0);
 }
 
+/**
+ * 判断消息是否整体按时间倒序排列。
+ *
+ * 从聊天列表最上面开始往下多选复制时，最新的消息会排在最前面。
+ * 不翻转的话，「对方回我的间隔」会算成 0 或负数。
+ * 用「时间递减的相邻对占比」判断，跨天也能正确处理
+ * （正序跨天只有一次大跳跃，倒序则是持续递减）。
+ */
+function isReversed(messages: Message[]): boolean {
+  const timed = messages.filter((m) => m.minute !== null);
+  if (timed.length < 2) return false;
+
+  const first = timed[0].minute!;
+  const last = timed[timed.length - 1].minute!;
+  if (first <= last) return false;
+
+  // 首尾递减只是候选；同一分钟里常有连续几条，那些「相等对」要排除掉，
+  // 否则它们会把递减比例稀释到阈值以下（真实数据里踩过这个坑）。
+  let decreasing = 0;
+  let comparable = 0;
+  for (let i = 1; i < timed.length; i++) {
+    const prev = timed[i - 1].minute!;
+    const cur = timed[i].minute!;
+    if (prev === cur) continue;
+    comparable++;
+    if (cur < prev) decreasing++;
+  }
+  return comparable === 0 || decreasing / comparable > 0.5;
+}
+
 /* ------------------------------------------------------------------ */
 /* 主入口                                                              */
 /* ------------------------------------------------------------------ */
 
 export function parseChat(input: string, selfName?: string): ParsedChat {
-  const lines = input.replace(/\r\n?/g, "\n").split("\n");
+  const lines = stripCommonPrefix(input.replace(/\r\n?/g, "\n").split("\n"));
   const base = new Date();
 
   const candidates: { strategy: Strategy; raw: RawMessage[]; score: number }[] = [
@@ -320,7 +375,7 @@ export function parseChat(input: string, selfName?: string): ParsedChat {
     return dayDiff * 1440 + m.minuteOfDay;
   };
 
-  const messages: Message[] = kept.map((m, idx) => {
+  const parsedMessages: Message[] = kept.map((m, idx) => {
     const { media, note } = splitMedia(m.text);
     return {
       id: `m${idx + 1}`,
@@ -335,6 +390,11 @@ export function parseChat(input: string, selfName?: string): ParsedChat {
       note,
     };
   });
+
+  const reversed = isReversed(parsedMessages);
+  const messages: Message[] = reversed
+    ? [...parsedMessages].reverse().map((m, i) => ({ ...m, id: `m${i + 1}` }))
+    : parsedMessages;
 
   const names = [...new Set(kept.map((m) => m.name))];
 
@@ -378,6 +438,7 @@ export function parseChat(input: string, selfName?: string): ParsedChat {
       nameCount: names.length,
       timestampRatio,
       orphanLines,
+      reversed,
       warnings,
     },
   };

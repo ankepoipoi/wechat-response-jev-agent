@@ -183,3 +183,129 @@ test("正常输入不产生警告", () => {
   );
   assert.deepEqual(parsed.diagnostics.warnings, []);
 });
+
+/* ------------------------------------------------------------------ */
+/* 粘贴污染的容错                                                      */
+/* ------------------------------------------------------------------ */
+
+test("整段带 markdown 引用符（每行 > ）时能剥掉前缀", () => {
+  const parsed = parseChat(
+    `> 小洪水
+> 2026年09月21日 17:18
+> 我们抱一下吧
+>
+> leeds
+> 2026年09月21日 17:20
+> 抱抱`,
+  );
+  assert.equal(parsed.messages.length, 2);
+  assert.deepEqual(parsed.names, ["小洪水", "leeds"]);
+  assert.equal(parsed.messages[0].time, "17:18");
+});
+
+test("整段统一缩进也能解析", () => {
+  const parsed = parseChat(
+    `  小洪水
+  2026年09月21日 17:18
+  在吗
+
+  leeds
+  2026年09月21日 17:20
+  在的`,
+  );
+  assert.equal(parsed.messages.length, 2);
+  assert.deepEqual(parsed.names, ["小洪水", "leeds"]);
+});
+
+test("只有少数行带 > 时不做剥离（避免误伤正文）", () => {
+  const parsed = parseChat(
+    `小洪水
+2026年09月21日 17:18
+> 引用了一句别人的话
+
+leeds
+2026年09月21日 17:20
+嗯嗯`,
+  );
+  assert.equal(parsed.messages.length, 2);
+  assert.equal(parsed.messages[0].text, "> 引用了一句别人的话");
+});
+
+test("Windows CRLF 换行不影响解析", () => {
+  const parsed = parseChat(
+    "小洪水\r\n2026年09月21日 17:18\r\n在吗\r\n\r\nleeds\r\n2026年09月21日 17:20\r\n在的",
+  );
+  assert.equal(parsed.messages.length, 2);
+});
+
+test("行尾多余空格不影响解析", () => {
+  const parsed = parseChat(
+    "小洪水  \n2026年09月21日 17:18  \n在吗  \n\nleeds  \n2026年09月21日 17:20  \n在的",
+  );
+  assert.equal(parsed.messages.length, 2);
+});
+
+test("倒序粘贴（最新的在最上面）会被翻转回时间顺序", () => {
+  const parsed = parseChat(
+    `leeds
+2026年09月21日 17:20
+在的
+
+小洪水
+2026年09月21日 17:18
+在吗`,
+    "小洪水",
+  );
+  assert.equal(parsed.messages.length, 2);
+  assert.equal(parsed.diagnostics.reversed, true);
+  // 翻转后最早的那条应该排在最前
+  assert.equal(parsed.messages[0].time, "17:18");
+  assert.equal(parsed.messages[0].sender, "self");
+  assert.equal(parsed.messages[1].time, "17:20");
+  assert.deepEqual(parsed.names, ["leeds", "小洪水"]);
+});
+
+test("正序输入不会被误判为倒序", () => {
+  const parsed = parseChat(
+    `小洪水
+2026年09月21日 17:18
+在吗
+
+leeds
+2026年09月21日 17:20
+在的`,
+  );
+  assert.equal(parsed.diagnostics.reversed, false);
+  assert.equal(parsed.messages[0].time, "17:18");
+});
+
+test("消息太少时不猜顺序", () => {
+  const parsed = parseChat(`leeds\n2026年09月21日 17:20\n在的`);
+  assert.equal(parsed.diagnostics.reversed, false);
+});
+
+test("同一分钟连发多条时，倒序仍能被识别", () => {
+  // 真实聊天里同一分钟常有连续几条，这些「相等对」会把递减比例稀释，
+  // 早期实现因此漏判，回复间隔被算成 0
+  const parsed = parseChat(
+    `leeds
+2026年09月21日 17:30
+嗯嗯
+
+leeds
+2026年09月21日 17:30
+在的
+
+小洪水
+2026年09月21日 17:20
+在吗
+
+小洪水
+2026年09月21日 17:20
+喂`,
+    "小洪水",
+  );
+  assert.equal(parsed.diagnostics.reversed, true);
+  assert.equal(parsed.messages[0].text, "喂");
+  assert.equal(parsed.messages[3].text, "嗯嗯");
+});

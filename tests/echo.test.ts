@@ -84,6 +84,22 @@ test("回复间隔按「对方回我」计算", () => {
   assert.equal(stats.replyMinutes, 10);
 });
 
+test("倒序记录的回复间隔仍然算得出来", () => {
+  // 复制时最新消息排在最上面，翻转后 17:40 问、17:50 答 = 10 分钟
+  const parsed = parseChat(
+    `leeds
+2026年09月21日 17:50
+在的
+
+小洪水
+2026年09月21日 17:40
+在吗`,
+    "小洪水",
+  );
+  const stats = computeStats(parsed.messages);
+  assert.equal(stats.replyMinutes, 10);
+});
+
 test("亲昵表达不会被当成敷衍，评级不低于 B", () => {
   const msg = {
     id: "m1",
