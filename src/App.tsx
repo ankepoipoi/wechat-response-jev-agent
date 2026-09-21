@@ -7,7 +7,7 @@ import { ChatStream } from "./components/ChatStream.tsx";
 import { Overview } from "./components/Overview.tsx";
 import { SessionList } from "./components/SessionList.tsx";
 import {
-  appendWithoutOverlap,
+  appendToSession,
   loadSessions,
   makeSessionId,
   persistSessions,
@@ -35,6 +35,7 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  /** 只装「新粘贴/新输入」的内容，载入记录后永远是空的 */
   const [input, setInput] = useState("");
   const [selfName, setSelfName] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -79,16 +80,22 @@ export default function App() {
 
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 4200);
+    const t = setTimeout(() => setNotice(null), 4600);
     return () => clearTimeout(t);
   }, [notice]);
 
-  const parsed = useMemo(
-    () => parseChat(input, selfName ?? undefined),
-    [input, selfName],
-  );
-
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
+
+  /**
+   * 界面上展示和参与分析的文本：
+   * 有当前记录就是记录的全部内容，否则是输入框里还没保存的内容。
+   */
+  const displayText = activeSession ? activeSession.input : input;
+
+  const parsed = useMemo(
+    () => parseChat(displayText, selfName ?? undefined),
+    [displayText, selfName],
+  );
 
   /* ---------------- 记录管理 ---------------- */
 
@@ -99,41 +106,35 @@ export default function App() {
     setSelfName(null);
     setResult(null);
     setError(null);
-    setNotice("已开始一段新记录，粘贴聊天后记得点「保存记录」");
+    setNotice("已开始一段新记录，粘贴聊天后给它起个名字保存。");
   }
 
   function onSelectSession(id: string) {
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
     setActiveId(id);
-    setInput(s.input);
+    setInput(""); // 输入框留空，只用来接新内容
     setSelfName(s.selfName);
     setName(s.name);
     setResult(s.result);
     setError(null);
-    setNotice(
-      s.result
-        ? `已载入「${s.name}」，接着把新聊天粘贴进来就会自动接到下面`
-        : `已载入「${s.name}」`,
-    );
+    setNotice(`已载入「${s.name}」。直接粘贴新聊天，会自动接到下面。`);
+  }
+
+  /** 把一段文本追加进当前记录并落盘，返回新增条数与记录名 */
+  function appendToActive(text: string): { added: number; label: string } | null {
+    const target = sessions.find((x) => x.id === activeId);
+    if (!target) return null;
+
+    const { session: next, added } = appendToSession(target, text, selfName);
+    setSessions((prev) => prev.map((s) => (s.id === target.id ? next : s)));
+    return { added, label: target.name };
   }
 
   function onSave() {
+    if (activeId) return; // 有记录时是自动保存的
     const trimmed = name.trim() || "未命名";
     const now = Date.now();
-
-    if (activeId) {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeId
-            ? { ...s, name: trimmed, input, selfName, updatedAt: now, result }
-            : s,
-        ),
-      );
-      setNotice(`已更新「${trimmed}」`);
-      return;
-    }
-
     const created: Session = {
       id: makeSessionId(),
       name: trimmed,
@@ -141,16 +142,19 @@ export default function App() {
       selfName,
       createdAt: now,
       updatedAt: now,
-      result,
+      result: null,
     };
     setSessions((prev) => [created, ...prev]);
     setActiveId(created.id);
-    setNotice(`已保存为「${trimmed}」。下次载入它，新聊天会自动接在下面。`);
+    setInput("");
+    setNotice(`已保存为「${trimmed}」。以后直接粘贴新聊天就会自动接在下面。`);
   }
 
   function onRename(id: string, next: string) {
     setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, name: next, updatedAt: Date.now() } : s)),
+      prev.map((s) =>
+        s.id === id ? { ...s, name: next, updatedAt: Date.now() } : s,
+      ),
     );
     if (id === activeId) setName(next);
   }
@@ -161,8 +165,8 @@ export default function App() {
   }
 
   /**
-   * 粘贴时如果已经载入了某段记录，就把新内容接到它下面（自动去掉重叠部分），
-   * 而不是覆盖掉原来的聊天。
+   * 粘贴即追加：已经载入了某段记录时，新聊天自动接到记录下面并立刻保存，
+   * 输入框保持空的 —— 它只是新内容的入口，不承载历史。
    */
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     if (!activeId) return;
@@ -170,15 +174,27 @@ export default function App() {
     if (!pasted.trim()) return;
 
     e.preventDefault();
-    const before = parsed.messages.length;
-    const merged = appendWithoutOverlap(input, pasted);
-    setInput(merged);
-    const after = parseChat(merged, selfName ?? undefined).messages.length;
-    const added = after - before;
+    const r = appendToActive(pasted);
+    if (!r) return;
+    setInput("");
+    setResult(null); // 内容变了，旧结果不再匹配
     setNotice(
-      added > 0
-        ? `已接到上次记录下面，新增 ${added} 条（重复部分自动去掉了）`
-        : "这段内容已经在记录里了，没有重复添加",
+      r.added > 0
+        ? `已自动追加 ${r.added} 条到「${r.label}」，点「开始分析」更新标签`
+        : `这段内容已经在「${r.label}」里了，没有重复添加`,
+    );
+  }
+
+  /** 手动输入的内容也支持追加 */
+  function onAppendManual() {
+    const r = appendToActive(input);
+    if (!r) return;
+    setInput("");
+    setResult(null);
+    setNotice(
+      r.added > 0
+        ? `已追加 ${r.added} 条到「${r.label}」`
+        : `这段内容已经在「${r.label}」里了，没有重复添加`,
     );
   }
 
@@ -194,7 +210,6 @@ export default function App() {
       });
       setResult(r);
 
-      // 分析结果随手存进当前记录，下次载入不用再花额度
       if (activeId) {
         setSessions((prev) =>
           prev.map((s) =>
@@ -216,7 +231,7 @@ export default function App() {
   }
 
   const canAnalyze = Boolean(selfName) && parsed.messages.length > 0 && !loading;
-  const canSave = input.trim().length > 0;
+  const canSave = !activeSession && input.trim().length > 0;
 
   return (
     <div className="shell">
@@ -250,15 +265,26 @@ export default function App() {
         <div className="stack">
           <section className="card stack">
             <div className="row">
-              <input
-                className="name-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="给这段记录起个名字（如「和小洪水」）"
-              />
-              <button className="btn-ghost" onClick={onSave} disabled={!canSave}>
-                {activeSession ? "保存记录" : "保存为新记录"}
-              </button>
+              {activeSession ? (
+                <>
+                  <span className="record-tag">当前记录</span>
+                  <span className="record-name">{activeSession.name}</span>
+                  <div className="spacer" />
+                  <span className="muted">粘贴新聊天会自动接在下面并保存</span>
+                </>
+              ) : (
+                <>
+                  <input
+                    className="name-input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="给这段记录起个名字（如「和小洪水」）"
+                  />
+                  <button className="btn-ghost" onClick={onSave} disabled={!canSave}>
+                    保存为新记录
+                  </button>
+                </>
+              )}
             </div>
 
             <textarea
@@ -266,7 +292,9 @@ export default function App() {
               onChange={(e) => setInput(e.target.value)}
               onPaste={onPaste}
               placeholder={
-                "把微信聊天记录粘贴到这里。\n\n三种格式都支持：\n  昵称 / 日期时间 / 正文   （微信多选复制，各占一行）\n  昵称 21:03              （正文换行写）\n  昵称：正文\n\n已经载入了某段记录时，直接粘贴新聊天，会自动接到下面。"
+                activeSession
+                  ? `在这里粘贴新的聊天记录 —— 会自动接到「${activeSession.name}」下面并立即保存。\n\n也可以先手动输入，再点「追加到记录」。`
+                  : "把微信聊天记录粘贴到这里。\n\n三种格式都支持：\n  昵称 / 日期时间 / 正文   （微信多选复制，各占一行）\n  昵称 21:03              （正文换行写）\n  昵称：正文\n\n语音 / 图片 / 表情包复制出来只有占位符，在后面补一句描述，AI 才知道那是什么。"
               }
             />
 
@@ -299,25 +327,25 @@ export default function App() {
                   "开始分析"
                 )}
               </button>
-              <button className="btn-ghost" onClick={() => setInput(SAMPLE)}>
-                填入示例
-              </button>
+
+              {activeSession && input.trim() ? (
+                <button className="btn-ghost" onClick={onAppendManual}>
+                  追加到记录
+                </button>
+              ) : null}
+
+              {!activeSession ? (
+                <button className="btn-ghost" onClick={() => setInput(SAMPLE)}>
+                  填入示例
+                </button>
+              ) : null}
+
               <div className="spacer" />
               <span className="muted">
-                解析到 {parsed.messages.length} 条
-                {activeSession ? ` · 当前记录「${activeSession.name}」` : ""}
+                共 {parsed.messages.length} 条
+                {activeSession ? ` · 已保存` : ""}
               </span>
             </div>
-
-            {activeId ? (
-              <div className="banner banner-append">
-                <span>📌</span>
-                <span>
-                  正在「{activeSession?.name ?? "未命名"}」中。粘贴新聊天会自动接在下面，
-                  不用手动拼接。
-                </span>
-              </div>
-            ) : null}
 
             {!selfName && parsed.messages.length > 0 ? (
               <div className="banner banner-info">
@@ -353,12 +381,18 @@ export default function App() {
 
           {result ? <Overview result={result} /> : null}
 
-          {result ? (
+          {parsed.messages.length > 0 ? (
             <section className="card">
+              {result ? null : (
+                <p className="muted" style={{ margin: "0 0 14px" }}>
+                  记录里的全部内容（{parsed.messages.length} 条）。点「开始分析」
+                  生成情绪与意图标签。
+                </p>
+              )}
               <ChatStream
                 messages={parsed.messages}
-                insights={result.insights}
-                reviews={result.reviews}
+                insights={result?.insights ?? []}
+                reviews={result?.reviews ?? []}
               />
             </section>
           ) : null}

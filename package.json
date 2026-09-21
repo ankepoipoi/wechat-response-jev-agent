@@ -8,7 +8,8 @@
     "dev": "concurrently -k -n api,web \"tsx watch server/index.ts\" \"vite\"",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.0",

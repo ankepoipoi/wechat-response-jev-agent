@@ -5,6 +5,7 @@
  */
 
 import type { Session } from "../shared/types.ts";
+import { parseChat } from "../shared/parse.ts";
 
 const KEY = "echo.sessions.v1";
 
@@ -89,6 +90,30 @@ export function appendWithoutOverlap(oldText: string, newText: string): string {
 
   if (!tail.trim()) return base;
   return `${base}\n\n${tail}`;
+}
+
+/**
+ * 把新内容追加进一段记录。
+ *
+ * 纯函数：不改动传入的对象，返回新记录对象和实际新增的条数。
+ * 界面上「粘贴即自动保存」走的就是这里，所以它必须可测。
+ */
+export function appendToSession(
+  session: Session,
+  incoming: string,
+  selfName: string | null,
+): { session: Session; added: number } {
+  const messagesOf = (text: string) =>
+    parseChat(text, selfName ?? undefined).messages.length;
+
+  const before = messagesOf(session.input);
+  const merged = appendWithoutOverlap(session.input, incoming);
+  const after = messagesOf(merged);
+
+  return {
+    session: { ...session, input: merged, updatedAt: Date.now() },
+    added: after - before,
+  };
 }
 
 /** 相对时间描述，列表里用 */

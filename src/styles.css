@@ -666,14 +666,17 @@ code.inline {
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
 }
 
-.banner-append {
-  background: rgba(99, 102, 241, 0.12);
-  color: #4f46e5;
-  border-color: rgba(99, 102, 241, 0.28);
+.record-tag {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--flat-bg);
+  border-radius: 999px;
+  padding: 4px 11px;
+  letter-spacing: 0.3px;
 }
 
-[data-theme="dark"] .banner-append {
-  background: rgba(99, 102, 241, 0.18);
-  color: #c7d2fe;
-  border-color: rgba(129, 140, 248, 0.35);
+.record-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
 }
