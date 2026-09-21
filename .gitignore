@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+# 页面上填的 API Key 存在这里，含密钥，绝对不能提交
+.config.json
 *.log
 logs/
 .DS_Store

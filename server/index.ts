@@ -15,6 +15,10 @@ import { analyzeChat } from "./analyze.ts";
 import { JevError } from "./jev.ts";
 import { LlmError, readLlmConfig } from "./llm.ts";
 import { suggestReplies } from "./suggest.ts";
+import { applyStoredConfig, configStatus, saveStoredConfig } from "./config.ts";
+
+// .env 已经加载完，这里再把页面上保存过的配置盖上去（页面配置优先）
+applyStoredConfig();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(__dirname, "../dist");
@@ -28,7 +32,8 @@ const HOST = process.env.HOST ?? "127.0.0.1";
 const MAX_MESSAGES = Number(process.env.MAX_MESSAGES ?? 120);
 /** 请求体允许携带的上限，超过分析上限时由 analyze 内部截取 */
 const MAX_INPUT_MESSAGES = 2000;
-const API_KEY = process.env.TYPESAFE_API_KEY ?? "";
+/** 动态读取：页面上刚保存的 Key 要能立即生效，不能缓存在模块常量里 */
+const typesafeKey = () => process.env.TYPESAFE_API_KEY?.trim() ?? "";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -89,15 +94,55 @@ function withinLimit(): boolean {
 /* ------------------------------------------------------------------ */
 
 app.get("/api/health", (_req, res) => {
-  const llm = readLlmConfig();
+  const status = configStatus();
   res.json({
     ok: true,
-    configured: Boolean(API_KEY),
+    configured: status.typesafe.configured,
     maxMessages: MAX_MESSAGES,
     /** 是否配置了生成式大模型（「最佳回复」功能需要） */
-    llmConfigured: Boolean(llm),
-    llmModel: llm?.model ?? null,
+    llmConfigured: status.llm.configured,
+    llmModel: status.llm.configured ? status.llm.model : null,
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* 页面上的 API Key 配置                                                */
+/*                                                                     */
+/* Key 只写进本机 .config.json，前端只能拿到「是否已配置」和掩码预览，      */
+/* 完整 Key 永远不下发到浏览器。                                          */
+/* ------------------------------------------------------------------ */
+
+app.get("/api/config", (_req, res) => {
+  res.json(configStatus());
+});
+
+const configSchema = z.object({
+  typesafeApiKey: z.string().max(500).optional(),
+  llmBaseUrl: z.string().max(500).optional(),
+  llmApiKey: z.string().max(500).optional(),
+  llmModel: z.string().max(200).optional(),
+});
+
+app.post("/api/config", (req, res) => {
+  const parsed = configSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "配置格式不正确" });
+    return;
+  }
+
+  try {
+    const saved = saveStoredConfig(parsed.data);
+    const changed = Object.keys(saved).length > 0;
+    // 立刻让当前进程生效，不用重启
+    applyStoredConfig();
+    console.log(
+      `[config] 已更新：${Object.keys(parsed.data).filter((k) => (parsed.data as Record<string, string | undefined>)[k]?.trim()).join(", ") || "（清空）"}`,
+    );
+    res.json({ ok: true, status: configStatus(), hasConfig: changed });
+  } catch (err) {
+    console.error("[config] 写入失败：", err);
+    res.status(500).json({ error: "配置没能保存到本机文件" });
+  }
 });
 
 app.post("/api/analyze", async (req, res) => {
@@ -106,8 +151,11 @@ app.post("/api/analyze", async (req, res) => {
     res.status(400).json({ error: "聊天结构不符合要求，请检查粘贴内容" });
     return;
   }
-  if (!API_KEY) {
-    res.status(503).json({ error: "还没配置 TYPESAFE_API_KEY，请在本机 .env 里填入" });
+  const key = typesafeKey();
+  if (!key) {
+    res.status(503).json({
+      error: "还没配置 TypeSafe API Key，点右上角「设置」可以直接填。",
+    });
     return;
   }
   if (!withinLimit()) {
@@ -116,7 +164,7 @@ app.post("/api/analyze", async (req, res) => {
   }
 
   try {
-    const result = await analyzeChat(parsed.data, API_KEY, MAX_MESSAGES);
+    const result = await analyzeChat(parsed.data, key, MAX_MESSAGES);
     console.log(
       `[analyze] 消息 ${parsed.data.messages.length} 条${result.truncatedFrom ? `（截取最近 ${result.analyzedCount} 条）` : ""}，${result.latencyMs}ms，tokens ${result.usage.input}/${result.usage.output}`,
     );
@@ -157,7 +205,7 @@ app.post("/api/suggest", async (req, res) => {
   if (!cfg) {
     res.status(503).json({
       error:
-        "还没配置生成式大模型。请在项目根目录 .env 里填 LLM_API_KEY（以及 LLM_BASE_URL、LLM_MODEL），然后重启服务。",
+        "还没配置生成式大模型（写回复需要它）。点右上角「设置」，填入 LLM 的地址、Key 和模型名即可。",
     });
     return;
   }
@@ -193,7 +241,11 @@ app.use((req, res, next) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Echo 已启动 → http://${HOST}:${PORT}/`);
-  if (!API_KEY) {
-    console.warn("警告：未检测到 TYPESAFE_API_KEY，分析功能不可用。");
+  const status = configStatus();
+  if (!status.typesafe.configured) {
+    console.warn("提示：还没配置 TypeSafe API Key，可以在页面上点「设置」填入。");
+  }
+  if (!status.llm.configured) {
+    console.warn("提示：还没配置生成式大模型，「最能拉近距离的回复」暂不可用。");
   }
 });

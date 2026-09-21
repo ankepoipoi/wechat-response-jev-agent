@@ -39,3 +39,34 @@ export async function getHealth(): Promise<HealthInfo> {
   const res = await fetch("/api/health");
   return (await res.json()) as HealthInfo;
 }
+
+/* ------------------------------------------------------------------ */
+/* 页面上的 API Key 配置                                                */
+/* 服务端只回传「是否已配置」和掩码，完整 Key 不会下发到浏览器。            */
+/* ------------------------------------------------------------------ */
+
+export interface ConfigStatus {
+  typesafe: {
+    configured: boolean;
+    preview: string;
+    source: "page" | "env" | null;
+  };
+  llm: {
+    configured: boolean;
+    preview: string;
+    baseUrl: string;
+    model: string;
+    source: "page" | "env" | null;
+  };
+}
+
+export async function getConfig(): Promise<ConfigStatus> {
+  const res = await fetch("/api/config");
+  return (await res.json()) as ConfigStatus;
+}
+
+export function saveConfig(
+  patch: Record<string, string>,
+): Promise<{ ok: boolean; status: ConfigStatus }> {
+  return post<{ ok: boolean; status: ConfigStatus }>("/api/config", patch);
+}

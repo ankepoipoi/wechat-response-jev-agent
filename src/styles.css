@@ -738,3 +738,45 @@ code.inline {
   font-size: 12.5px;
   color: var(--muted);
 }
+
+/* ------------------------------ 设置面板 ------------------------------ */
+
+.settings {
+  position: relative;
+}
+
+.settings-panel {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: min(460px, calc(100vw - 40px));
+  z-index: 30;
+  text-align: left;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  box-shadow: 0 22px 50px -18px rgba(20, 22, 50, 0.42);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card-solid);
+}
+
+.settings-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.settings-panel a {
+  color: var(--accent);
+}
+
+.settings-panel code.inline {
+  font-size: 12px;
+}

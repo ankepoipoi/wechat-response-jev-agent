@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseChat } from "../shared/parse.ts";
 import { mergeBaseline } from "../shared/metrics.ts";
 import type {
@@ -8,10 +8,11 @@ import type {
   Session,
   SuggestResult,
 } from "../shared/types.ts";
-import { getHealth, runAnalyze, runSuggest } from "./api.ts";
+import { getHealth, runAnalyze, runSuggest, type ConfigStatus } from "./api.ts";
 import { ChatStream } from "./components/ChatStream.tsx";
 import { Overview } from "./components/Overview.tsx";
 import { SessionList } from "./components/SessionList.tsx";
+import { Settings } from "./components/Settings.tsx";
 import { Suggestions } from "./components/Suggestions.tsx";
 import {
   appendToSession,
@@ -105,6 +106,12 @@ export default function App() {
     const t = setTimeout(() => setNotice(null), 4600);
     return () => clearTimeout(t);
   }, [notice]);
+
+  /** 设置面板保存后立刻把状态同步到界面（否则要刷新才生效） */
+  const onConfigStatus = useCallback((s: ConfigStatus) => {
+    setConfigured(s.typesafe.configured);
+    setLlmConfigured(s.llm.configured);
+  }, []);
 
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
 
@@ -287,13 +294,16 @@ export default function App() {
             <p>逐句读懂情绪与意图 · 数字全部由程序计算</p>
           </div>
         </div>
-        <button
-          className="btn-ghost btn-icon"
-          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-          title="切换主题"
-        >
-          {theme === "light" ? "🌙" : "☀️"}
-        </button>
+        <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+          <Settings onStatusChange={onConfigStatus} />
+          <button
+            className="btn-ghost btn-icon"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            title="切换主题"
+          >
+            {theme === "light" ? "🌙" : "☀️"}
+          </button>
+        </div>
       </header>
 
       <div className="layout">
